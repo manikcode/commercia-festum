@@ -1,0 +1,1655 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUHP Financial Simulation Challenge</title>
+    <meta name="description" content="CUHP Financial Simulation Challenge - Stock Trading Game">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            background: #f4f4f4;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+
+        /* Smooth transitions */
+        button {
+            transition: all 0.15s ease;
+        }
+
+        button:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+
+        button:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        input {
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        input:focus {
+            border-color: #387ed1 !important;
+            box-shadow: 0 0 0 3px rgba(56, 126, 209, 0.1);
+        }
+
+        table tr {
+            transition: background 0.1s ease;
+        }
+
+        /* Price change flash */
+        @keyframes flashGreen {
+            0% {
+                background: rgba(0, 200, 83, 0.3);
+            }
+
+            100% {
+                background: transparent;
+            }
+        }
+
+        @keyframes flashRed {
+            0% {
+                background: rgba(255, 82, 82, 0.3);
+            }
+
+            100% {
+                background: transparent;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo, useRef, memo } = React;
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDrw_FUFlbH377h_tsRY2kCa9TlEK-XINQ",
+            authDomain: "cuhp-trading-game.firebaseapp.com",
+            databaseURL: "https://cuhp-trading-game-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "cuhp-trading-game",
+            storageBucket: "cuhp-trading-game.firebasestorage.app",
+            messagingSenderId: "930191923536",
+            appId: "1:930191923536:web:7f1ac292aca0a0b9a5f455"
+        };
+
+        // Initialize Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        const gameRef = database.ref('game');
+
+        const Icon = ({ name, size = 16, color = 'currentColor' }) => {
+            const icons = {
+                trendingUp: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>,
+                trendingDown: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6" /><polyline points="17 18 23 18 23 12" /></svg>,
+                users: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
+                lock: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>,
+                refresh: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></svg>,
+                logOut: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>,
+                settings: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
+                activity: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>,
+                arrowUp: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" /></svg>,
+                arrowDown: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><line x1="7" y1="7" x2="17" y2="17" /><polyline points="17 7 17 17 7 17" /></svg>,
+                wifi: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M1.42 9a16 16 0 0 1 21.16 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" /></svg>,
+                award: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><circle cx="12" cy="8" r="7" /><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" /></svg>,
+            };
+            return icons[name] || null;
+        };
+
+        const STOCKS = [
+            { code: 'TATA', name: 'Tata Motors', sector: 'Automobile', basePrice: 100 },
+            { code: 'MARUTI', name: 'Maruti Suzuki', sector: 'Automobile', basePrice: 120 },
+            { code: 'REL', name: 'Reliance', sector: 'Energy', basePrice: 200 },
+            { code: 'ONGC', name: 'ONGC', sector: 'Energy', basePrice: 180 },
+            { code: 'HDFC', name: 'HDFC Bank', sector: 'Banking', basePrice: 150 },
+            { code: 'ICICI', name: 'ICICI Bank', sector: 'Banking', basePrice: 140 },
+            { code: 'INFY', name: 'Infosys', sector: 'IT', basePrice: 80 },
+            { code: 'TCS', name: 'TCS', sector: 'IT', basePrice: 90 },
+            { code: 'WIPRO', name: 'Wipro', sector: 'IT', basePrice: 70 },
+            { code: 'ADANI', name: 'Adani Ports', sector: 'Infrastructure', basePrice: 180 },
+            { code: 'LT', name: 'L&T', sector: 'Infrastructure', basePrice: 160 },
+            { code: 'BHARTI', name: 'Bharti Airtel', sector: 'Telecom', basePrice: 110 },
+            { code: 'JIO', name: 'Jio Platforms', sector: 'Telecom', basePrice: 100 }
+        ];
+
+        const SECTORS = ['Automobile', 'Energy', 'Banking', 'IT', 'Infrastructure', 'Telecom'];
+
+        const NEWS_TEMPLATES = {
+            good: [
+                { title: 'Record Quarterly Profits', impact: 10 },
+                { title: 'Major Contract Won', impact: 8 },
+                { title: 'Government Policy Boost', impact: 12 },
+                { title: 'Export Orders Surge', impact: 10 },
+            ],
+            bad: [
+                { title: 'Profit Warning Issued', impact: -10 },
+                { title: 'Regulatory Investigation', impact: -12 },
+                { title: 'Supply Chain Disruption', impact: -6 },
+                { title: 'Competition Intensifies', impact: -8 }
+            ]
+        };
+
+        const _SYS_KEY = "TWFuaWsyODEzQA==";
+        const GAME_VERSION = "v1.0.4";
+        const STARTING_CASH = 100000;
+        const FLUCTUATION_INTERVAL = 3000; // Slower 3s updates to give players time to react
+
+        // Sounds
+        const SOUNDS = {
+            news: new Audio('https://assets.mixkit.co/active_storage/sfx/1317/1317-preview.mp3'), // Alert chime
+            profit: new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3'), // Coins/Cash
+            loss: new Audio('https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3'), // Thud
+            crash: new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3') // Glass break
+        };
+
+        // SVG Chart Component - Memoized
+        const StockChart = memo(({ stockCode, data, color }) => {
+            const [hoverData, setHoverData] = useState(null);
+            const [chartType, setChartType] = useState('line'); // 'line' or 'candle'
+
+            useEffect(() => setHoverData(null), [data]);
+
+            if (!data || data.length < 2) return <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>Waiting for market data...</div>;
+
+            const height = 180;
+            const width = 600;
+            const padding = 20;
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const range = max - min || 1;
+
+            const candles = useMemo(() => {
+                return data.map((price, i) => {
+                    if (i === 0) return { x: 0, open: price, close: price, high: price, low: price };
+                    const prev = data[i - 1];
+                    return {
+                        x: i,
+                        open: prev,
+                        close: price,
+                        high: Math.max(prev, price) + Math.random() * (range * 0.05),
+                        low: Math.min(prev, price) - Math.random() * (range * 0.05)
+                    };
+                });
+            }, [data, range]);
+
+            const getY = (val) => height - padding - ((val - min) / range) * (height - (padding * 2));
+            const getX = (i) => padding + (i / (data.length - 1)) * (width - (padding * 2));
+
+            const points = data.map((d, i) => `${getX(i)},${getY(d)}`).join(' ');
+
+            const handleMouseMove = (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const mousePixelX = e.clientX - rect.left;
+                const svgX = (mousePixelX / rect.width) * width;
+
+                if (svgX < padding || svgX > width - padding) {
+                    setHoverData(null);
+                    return;
+                }
+
+                const chartAreaWidth = width - (padding * 2);
+                const index = Math.round(((svgX - padding) / chartAreaWidth) * (data.length - 1));
+
+                if (index >= 0 && index < data.length) {
+                    setHoverData({
+                        x: getX(index),
+                        y: getY(data[index]),
+                        price: data[index],
+                        index
+                    });
+                }
+            };
+
+            return (
+                <div style={{ padding: '16px', background: '#1a1a2e', borderRadius: '8px', marginBottom: '16px', border: '1px solid #2a2a4a', position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ color: '#fff', fontWeight: '600' }}>{stockCode}</span>
+                            <div style={{ display: 'flex', background: '#0f3460', borderRadius: '4px', overflow: 'hidden' }}>
+                                <button onClick={(e) => { e.stopPropagation(); setChartType('line'); }} style={{ padding: '4px 8px', border: 'none', background: chartType === 'line' ? '#387ed1' : 'transparent', color: '#fff', fontSize: '10px', cursor: 'pointer' }}>Line</button>
+                                <button onClick={(e) => { e.stopPropagation(); setChartType('candle'); }} style={{ padding: '4px 8px', border: 'none', background: chartType === 'candle' ? '#387ed1' : 'transparent', color: '#fff', fontSize: '10px', cursor: 'pointer' }}>Candle</button>
+                            </div>
+                        </div>
+                        <span style={{ color: color, fontWeight: 'bold' }}>₹{data[data.length - 1]}</span>
+                    </div>
+
+                    <div onMouseMove={handleMouseMove} onMouseLeave={() => setHoverData(null)} style={{ cursor: 'crosshair', position: 'relative', height: '180px' }}>
+                        <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '100%', display: 'block' }}>
+                            <defs>
+                                <linearGradient id={`grad_${stockCode}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+                                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                                </linearGradient>
+                            </defs>
+
+                            <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#2a2a4a" strokeWidth="1" />
+                            <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#2a2a4a" strokeWidth="1" />
+
+                            {chartType === 'line' ? (
+                                <>
+                                    <path d={`M ${padding},${height - padding} ${points} L ${width - padding},${height - padding}`} fill={`url(#grad_${stockCode})`} stroke="none" />
+                                    <polyline fill="none" stroke={color} strokeWidth="2" points={points} vectorEffect="non-scaling-stroke" />
+                                </>
+                            ) : (
+                                candles.map((c, i) => {
+                                    const x = getX(i);
+                                    const yOpen = getY(c.open);
+                                    const yClose = getY(c.close);
+                                    const yHigh = getY(c.high);
+                                    const yLow = getY(c.low);
+                                    const isGreen = c.close >= c.open;
+                                    const candleColor = isGreen ? '#00c853' : '#ff5252';
+                                    const candleWidth = Math.max(2, (width / data.length) * 0.6);
+
+                                    return (
+                                        <g key={i}>
+                                            <line x1={x} y1={yHigh} x2={x} y2={yLow} stroke={candleColor} strokeWidth="1" />
+                                            <rect x={x - candleWidth / 2} y={Math.min(yOpen, yClose)} width={candleWidth} height={Math.max(1, Math.abs(yClose - yOpen))} fill={candleColor} />
+                                        </g>
+                                    )
+                                })
+                            )}
+
+                            {hoverData && (
+                                <>
+                                    <line x1={hoverData.x} y1={padding} x2={hoverData.x} y2={height - padding} stroke="#fff" strokeDasharray="4" opacity="0.5" />
+                                    <circle cx={hoverData.x} cy={hoverData.y} r="4" fill="#fff" />
+                                </>
+                            )}
+                        </svg>
+
+                        {hoverData && (
+                            <div style={{
+                                position: 'absolute',
+                                left: `${(hoverData.x / width) * 100}%`,
+                                top: '10px',
+                                transform: 'translateX(-50%)',
+                                background: 'rgba(0,0,0,0.8)', color: '#fff',
+                                padding: '4px 8px', borderRadius: '4px',
+                                fontSize: '11px', whiteSpace: 'nowrap',
+                                pointerEvents: 'none',
+                                zIndex: 10,
+                                border: '1px solid #444'
+                            }}>
+                                ₹{hoverData.price}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        });
+
+        const SentimentMeter = memo(({ news = [] }) => {
+            const score = news.slice(0, 5).reduce((acc, n) => acc + (n.impact || 0), 0);
+            const normalized = Math.max(-50, Math.min(50, score));
+            const rotation = (normalized + 50) * 1.8 - 90; // Scale -50/50 to -90/90 degrees
+
+            let label = 'NEUTRAL';
+            let color = '#94a3b8';
+            if (score > 15) { label = 'VERY BULLISH'; color = '#00c853'; }
+            else if (score > 5) { label = 'BULLISH'; color = '#10b981'; }
+            else if (score < -15) { label = 'VERY BEARISH'; color = '#ff5252'; }
+            else if (score < -5) { label = 'BEARISH'; color = '#ef4444'; }
+
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minWidth: '100px', borderLeft: '1px solid #e0e0e0', paddingLeft: '24px' }}>
+                    <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700', letterSpacing: '0.5px', marginBottom: '4px' }}>MARKET SENTIMENT</div>
+                    <div style={{ position: 'relative', width: '80px', height: '40px' }}>
+                        <svg viewBox="0 0 100 50" style={{ width: '100%', height: '100%' }}>
+                            <path d="M10,50 A40,40 0 0,1 90,50" fill="none" stroke="#f1f5f9" strokeWidth="12" strokeLinecap="round" />
+                            <path d="M10,50 A40,40 0 0,1 50,10" fill="none" stroke="#ff5252" strokeWidth="12" strokeLinecap="round" opacity="0.3" />
+                            <path d="M50,10 A40,40 0 0,1 90,50" fill="none" stroke="#00c853" strokeWidth="12" strokeLinecap="round" opacity="0.3" />
+                            <g transform={`rotate(${rotation}, 50, 50)`}>
+                                <line x1="50" y1="50" x2="50" y2="15" stroke="#1e293b" strokeWidth="3" strokeLinecap="round" />
+                                <circle cx="50" cy="50" r="4" fill="#1e293b" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: '800', color: color, marginTop: '2px' }}>{label}</div>
+                </div>
+            );
+        });
+
+        // Memoized Stock Table Row
+        const StockRow = memo(({ stock, currentPrice, chg, qty, avgCost, buyQty, sellQty, onBuyQtyChange, onSellQtyChange, onBuy, onSell, isSelected, onClick, tradingOpen, gameEnded }) => {
+            let stockPnL = 0;
+            let stockPnLPct = '0.0';
+
+            if (qty > 0) {
+                stockPnL = (currentPrice - avgCost) * qty;
+                if (avgCost !== 0) stockPnLPct = ((stockPnL / (avgCost * qty)) * 100).toFixed(1);
+            } else if (qty < 0) {
+                stockPnL = (avgCost - currentPrice) * Math.abs(qty);
+                if (avgCost !== 0) stockPnLPct = ((stockPnL / (avgCost * Math.abs(qty))) * 100).toFixed(1);
+            }
+
+            const s = {
+                textGreen: { color: '#00c853' },
+                textRed: { color: '#ff5252' },
+                textMuted: { color: '#6c757d' },
+                input: { width: '80px', padding: '6px', textAlign: 'center', border: '1px solid #e0e0e0', borderRadius: '4px 0 0 4px', outline: 'none' },
+                btn: { padding: '6px 10px', fontSize: '13px', fontWeight: '500', borderRadius: '0 4px 4px 0', border: 'none', cursor: 'pointer' },
+                btnSuccess: { background: '#00c853', color: '#fff' },
+                btnDanger: { background: '#ff5252', color: '#fff' }
+            };
+
+            return (
+                <tr style={{ borderBottom: '1px solid #e0e0e0', background: isSelected ? '#e3f2fd' : 'transparent', cursor: 'pointer' }} onClick={onClick}>
+                    <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: '500' }}>{stock.code}</div>
+                        <div style={{ fontSize: '11px', color: '#6c757d' }}>{stock.name}</div>
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: '600', fontFamily: 'monospace' }}>₹{currentPrice.toLocaleString()}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                        {chg !== 0 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', ...(chg > 0 ? s.textGreen : s.textRed) }}>
+                                {chg > 0 ? '▲' : '▼'} {Math.abs(chg).toFixed(1)}%
+                            </span>
+                        )}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace', color: qty < 0 ? '#ff5252' : '#212529' }}>
+                        {qty} {qty < 0 && <span style={{ fontSize: '10px', marginLeft: '4px', background: '#ffebee', padding: '2px 4px', borderRadius: '3px' }}>SHORT</span>}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace' }}>
+                        {qty !== 0 ? `₹${avgCost.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : '-'}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace' }}>
+                        {qty !== 0 ? `₹${(Math.abs(qty) * avgCost).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '-'}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace' }}>
+                        {qty !== 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                <div style={{ fontWeight: '600', ...(stockPnL >= 0 ? s.textGreen : s.textRed), fontSize: '13px' }}>
+                                    {stockPnL >= 0 ? '+' : '-'}₹{Math.abs(stockPnL).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </div>
+                                <div style={{ fontSize: '11px', ...(stockPnL >= 0 ? s.textGreen : s.textRed) }}>
+                                    {stockPnL >= 0 ? '+' : ''}{stockPnLPct}%
+                                </div>
+                            </div>
+                        ) : <span style={{ color: '#6c757d' }}>-</span>}
+                    </td>
+                    <td style={{ padding: '8px 12px' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                            <div style={{ display: 'flex' }}>
+                                <input type="number" min="0" placeholder="Qty" style={s.input} value={buyQty} onChange={onBuyQtyChange} disabled={!tradingOpen || gameEnded} />
+                                <button onClick={onBuy} disabled={!tradingOpen || gameEnded} style={{ ...s.btn, ...s.btnSuccess, opacity: tradingOpen ? 1 : 0.5 }}>Buy</button>
+                            </div>
+                            <div style={{ display: 'flex' }}>
+                                <input type="number" min="0" placeholder="Qty" style={s.input} value={sellQty} onChange={onSellQtyChange} disabled={!tradingOpen || gameEnded} />
+                                <button onClick={onSell} disabled={!tradingOpen || gameEnded} style={{ ...s.btn, ...s.btnDanger, opacity: tradingOpen ? 1 : 0.5 }}>Sell</button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            );
+        });
+
+        const TradingGame = () => {
+            const [view, setView] = useState('home');
+            const [adminAuth, setAdminAuth] = useState(false);
+            const [passwordInput, setPasswordInput] = useState('');
+            const [loading, setLoading] = useState(true);
+            const [connected, setConnected] = useState(false);
+            const [activeTab, setActiveTab] = useState('stocks');
+            const isAdmin = useRef(false);
+            const lastNewsId = useRef(0);
+
+            const initPrices = () => {
+                const prices = {}, priceChanges = {};
+                STOCKS.forEach(s => { prices[s.code] = s.basePrice; priceChanges[s.code] = 0; });
+                return { prices, priceChanges };
+            };
+
+            const defaultState = {
+                currentRound: 1, tradingOpen: false, ...initPrices(),
+                teams: {}, gameEnded: false, news: [], volatility: 1.5
+            };
+
+            const [gameState, setGameState] = useState(defaultState);
+            const [newsType, setNewsType] = useState('good');
+            const [newsTarget, setNewsTarget] = useState('stock');
+            const [selectedStock, setSelectedStock] = useState('TATA');
+            const [selectedSector, setSelectedSector] = useState('Automobile');
+            const [customNews, setCustomNews] = useState('');
+            const [customImpact, setCustomImpact] = useState('10');
+            const [teamName, setTeamName] = useState('');
+            const [teamPin, setTeamPin] = useState('');
+            const [currentTeamId, setCurrentTeamId] = useState(null);
+            const [buyQty, setBuyQty] = useState({});
+            const [sellQty, setSellQty] = useState({});
+            const [showChart, setShowChart] = useState(false);
+            const [selectedStockData, setSelectedStockData] = useState(null);
+
+            // Auto News State
+            const [autoNewsEnabled, setAutoNewsEnabled] = useState(false);
+            const AUTO_NEWS_INTERVAL = 120000; // 2 minutes
+
+            // Notification State
+            const [notification, setNotification] = useState(null);
+
+            const notify = (soundKey, message) => {
+                // Play sound
+                if (SOUNDS[soundKey]) {
+                    const audio = SOUNDS[soundKey];
+                    audio.currentTime = 0; // Reset to start
+                    audio.play().catch(e => console.log('Audio error:', e));
+                }
+
+                // Show notification
+                setNotification({ message, type: soundKey });
+                setTimeout(() => setNotification(null), 3000);
+            };
+
+            // Firebase real-time listener
+            // Firebase real-time listeners - OPTIMIZED FOR SPEED
+            useEffect(() => {
+                const connectedRef = database.ref('.info/connected');
+                connectedRef.on('value', (snap) => setConnected(snap.val() === true));
+
+                // 1. Core Game State Listener (Status, Round, Volatility, News)
+                // Using specific listeners to avoid heavy payload on every price change
+                const statusRef = gameRef;
+                statusRef.on('value', snapshot => {
+                    const data = snapshot.val() || {};
+                    setGameState(prev => ({
+                        ...prev,
+                        tradingOpen: data.tradingOpen ?? false,
+                        currentRound: data.currentRound ?? 1,
+                        gameEnded: data.gameEnded ?? false,
+                        volatility: data.volatility ?? 1.5,
+                        news: data.news || [],
+                        prices: data.prices || prev.prices,
+                        priceChanges: data.priceChanges || prev.priceChanges,
+                        teams: data.teams || prev.teams,
+                        history: data.history || prev.history
+                    }));
+
+                    // NEWS SOUND TRIGGER: Robust detection
+                    const latestNews = (data.news || [])[0];
+                    if (latestNews) {
+                        if (lastNewsId.current === 0) {
+                            // First time loading data: just sync the ID, don't play
+                            lastNewsId.current = latestNews.id;
+                        } else if (latestNews.id !== lastNewsId.current) {
+                            // New news ID detected while page is open!
+                            lastNewsId.current = latestNews.id;
+                            notify('news', `🚨 Breaking News: ${latestNews.title}`);
+                        }
+                    }
+                    setLoading(false);
+                });
+
+                return () => {
+                    statusRef.off();
+                    connectedRef.off();
+                };
+            }, []);
+
+            // Price fluctuation - runs when admin has trading open
+            useEffect(() => {
+                let interval = null;
+
+                if (adminAuth && gameState.tradingOpen && !gameState.gameEnded) {
+                    console.log('Starting price fluctuation...');
+
+                    const fluctuatePrices = async () => {
+                        try {
+                            const snapshot = await gameRef.once('value');
+                            const data = snapshot.val();
+                            if (!data || !data.tradingOpen) return;
+
+                            const newPrices = { ...data.prices };
+                            const newChanges = { ...data.priceChanges };
+                            const vol = data.volatility || 1.5;
+
+                            // Randomly change stocks
+                            const stocksToChange = Math.floor(Math.random() * 3) + 2;
+                            const shuffled = [...STOCKS].sort(() => Math.random() - 0.5);
+
+                            shuffled.slice(0, stocksToChange).forEach(stock => {
+                                const changePercent = (Math.random() - 0.5) * 2 * vol;
+                                const oldPrice = newPrices[stock.code] || stock.basePrice;
+                                const newPrice = Math.max(10, Math.round(oldPrice * (1 + changePercent / 100)));
+                                newPrices[stock.code] = newPrice;
+                                newChanges[stock.code] = parseFloat(((newPrice - oldPrice) / oldPrice * 100).toFixed(2));
+                            });
+
+                            // Prepare History
+                            const newHist = { ...(data.history || {}) };
+                            STOCKS.forEach(s => {
+                                const code = s.code;
+                                const currentSeries = [...(newHist[code] || [])];
+                                currentSeries.push(newPrices[code]);
+                                if (currentSeries.length > 50) currentSeries.shift();
+                                newHist[code] = currentSeries;
+                            });
+
+                            // Perform single update for everything
+                            await gameRef.update({
+                                prices: newPrices,
+                                priceChanges: newChanges,
+                                history: newHist
+                            });
+
+                        } catch (err) {
+                            console.error('Fluctuation error:', err);
+                        }
+                    };
+
+                    // Run immediately, then every interval
+                    fluctuatePrices();
+                    interval = setInterval(fluctuatePrices, FLUCTUATION_INTERVAL);
+                }
+
+                return () => {
+                    if (interval) {
+                        clearInterval(interval);
+                        console.log('Stopped price fluctuation');
+                    }
+                };
+            }, [adminAuth, gameState.tradingOpen, gameState.gameEnded]);
+
+            // Auto News Loop
+            useEffect(() => {
+                let interval = null;
+                if (adminAuth && autoNewsEnabled && gameState.tradingOpen && !gameState.gameEnded) {
+                    console.log('✅ Auto News Active: Next news in 2 mins...');
+                    interval = setInterval(() => {
+                        console.log('📰 Launching Auto News...');
+
+                        // 1. Randomly decide target type (Stock or Sector)
+                        const isStock = Math.random() > 0.5;
+
+                        // 2. Randomly decide impact type (Good or Bad)
+                        const isGood = Math.random() > 0.5;
+                        const type = isGood ? 'good' : 'bad';
+
+                        // 3. Pick random template
+                        const templates = NEWS_TEMPLATES[type];
+                        const template = templates[Math.floor(Math.random() * templates.length)];
+
+                        // 4. Calculate prices
+                        const newPrices = { ...gameState.prices };
+                        const newChanges = { ...gameState.priceChanges };
+                        let titleFinal = "";
+
+                        if (isStock) {
+                            const randomStock = STOCKS[Math.floor(Math.random() * STOCKS.length)];
+                            titleFinal = `${randomStock.code}: ${template.title}`;
+                            newPrices[randomStock.code] = Math.max(10, Math.round((newPrices[randomStock.code] || randomStock.basePrice) * (1 + template.impact / 100)));
+                            newChanges[randomStock.code] = template.impact;
+                        } else {
+                            const randomSector = SECTORS[Math.floor(Math.random() * SECTORS.length)];
+                            titleFinal = `${randomSector}: ${template.title}`;
+                            STOCKS.forEach(s => {
+                                if (s.sector === randomSector) {
+                                    newPrices[s.code] = Math.max(10, Math.round((newPrices[s.code] || s.basePrice) * (1 + template.impact / 100)));
+                                    newChanges[s.code] = template.impact;
+                                }
+                            });
+                        }
+
+                        // 5. Publish
+                        const newsItem = {
+                            id: Date.now(),
+                            title: titleFinal,
+                            type: type,
+                            impact: template.impact,
+                            timestamp: new Date().toLocaleTimeString()
+                        };
+
+                        // We need to read current state effectively or use ref, but here rely on standard update
+                        // Note: For absolute safety in interval closure, we should use functional update or ref, 
+                        // but since we read 'gameState' for prices, we might be reading stale state if not careful.
+                        // To fix this, we'll fetch latest from Firebase before writing.
+                        gameRef.once('value').then(snap => {
+                            const currentData = snap.val() || {};
+                            const currentPrices = currentData.prices || newPrices;
+                            // Recalculate with FRESH prices to avoid overwriting previous fluctuations
+                            if (isStock) {
+                                const randomStock = STOCKS[Math.floor(Math.random() * STOCKS.length)]; // Re-pick or keep specific? Let's use clean logic inside.
+                                // Actually, simpler: Just use the values we calculated, but merge with latest?
+                                // No, price calculation depends on 'current' price. 
+                                // Let's just do a clean update:
+                            }
+
+                            // Re-do the logic inside the promise to ensure freshness
+                            const freshPrices = { ...currentData.prices };
+                            const freshChanges = { ...currentData.priceChanges };
+
+                            if (isStock) {
+                                // We need to share the selection logic. Let's simplfy. 
+                                // We will just push the update directly.
+                            }
+
+                            // To avoid complexity, we will just use the simple saveToFirebase which merges.
+                            // But prices needs to be entire object.
+                            // Let's use the 'launchNews' function logic but triggered here?
+                            // No, let's keep it self-contained for reliability.
+
+                            const latestNews = [newsItem, ...(currentData.news || [])].slice(0, 10);
+
+                            // We need to re-apply price change on FRESH prices
+                            // Let's copy the logic fully securely:
+
+                            if (isStock) {
+                                const randomStock = STOCKS[Math.floor(Math.random() * STOCKS.length)];
+                                // Re-update title to match the stock we actually picked in this scope? 
+                                // Or capture variables. 
+                                // Ideally we pick variables outside, then apply to fresh data inside.
+                                const code = STOCKS[Math.floor(Math.random() * STOCKS.length)].code;
+                                const p = freshPrices[code];
+                                freshPrices[code] = Math.max(10, Math.round(p * (1 + template.impact / 100)));
+                                freshChanges[code] = template.impact;
+                                newsItem.title = `${code}: ${template.title}`;
+                            } else {
+                                const sector = SECTORS[Math.floor(Math.random() * SECTORS.length)];
+                                STOCKS.forEach(s => {
+                                    if (s.sector === sector) {
+                                        freshPrices[s.code] = Math.max(10, Math.round(freshPrices[s.code] * (1 + template.impact / 100)));
+                                        freshChanges[s.code] = template.impact;
+                                    }
+                                });
+                                newsItem.title = `${sector}: ${template.title}`;
+                            }
+
+                            gameRef.update({ prices: freshPrices, priceChanges: freshChanges, news: latestNews });
+                        });
+
+                    }, AUTO_NEWS_INTERVAL);
+                }
+                return () => clearInterval(interval);
+            }, [adminAuth, autoNewsEnabled, gameState.tradingOpen, gameState.gameEnded]);
+
+            const currentTeam = useMemo(() => {
+                if (!currentTeamId || !gameState.teams) return null;
+                return gameState.teams[currentTeamId] || null;
+            }, [currentTeamId, gameState.teams]);
+
+            const calculatePortfolio = useCallback((team) => {
+                if (!team) return { invested: 0, currentValue: 0, pnl: 0, pnlPct: 0, debt: 0, netWorth: 0 };
+
+                let currentValue = 0;
+                let invested = 0;
+                const cash = Number(team.cash || 0);
+                const debt = Number(team.debt || 0);
+
+                STOCKS.forEach(s => {
+                    const qty = Number(team.holdings?.[s.code] || 0);
+                    if (qty !== 0) {
+                        currentValue += qty * (gameState.prices?.[s.code] || 0);
+                        // If avgCost is not tracked (legacy data), use basePrice
+                        const avgCost = Number(team.avgCost?.[s.code] || s.basePrice);
+                        invested += qty * avgCost;
+                    }
+                });
+
+                const pnl = currentValue - invested;
+                const pnlPct = invested !== 0 ? (pnl / Math.abs(invested)) * 100 : 0;
+                const netWorth = currentValue + cash - debt;
+
+                return { invested, currentValue, pnl, pnlPct, debt, netWorth };
+            }, [gameState.prices]);
+
+            const saveToFirebase = (updates) => gameRef.update(updates);
+
+            const launchNews = (useTemplate = true) => {
+                const templates = NEWS_TEMPLATES[newsType];
+                const template = templates[Math.floor(Math.random() * templates.length)];
+                const newPrices = { ...gameState.prices };
+                const newChanges = { ...gameState.priceChanges };
+
+                let newsItem;
+                const impact = useTemplate ? template.impact : parseFloat(customImpact);
+                const title = useTemplate ? template.title : customNews;
+
+                if (!useTemplate && (!customNews.trim() || isNaN(impact))) {
+                    alert('Enter valid news and impact'); return;
+                }
+
+                if (newsTarget === 'stock') {
+                    newsItem = { id: Date.now(), title: `${selectedStock}: ${title}`, type: impact > 0 ? 'good' : 'bad', impact, timestamp: new Date().toLocaleTimeString() };
+                    newPrices[selectedStock] = Math.max(10, Math.round(gameState.prices[selectedStock] * (1 + impact / 100)));
+                    newChanges[selectedStock] = impact;
+                } else {
+                    newsItem = { id: Date.now(), title: `${selectedSector}: ${title}`, type: impact > 0 ? 'good' : 'bad', impact, timestamp: new Date().toLocaleTimeString() };
+                    STOCKS.forEach(s => {
+                        if (s.sector === selectedSector) {
+                            newPrices[s.code] = Math.max(10, Math.round(gameState.prices[s.code] * (1 + impact / 100)));
+                            newChanges[s.code] = impact;
+                        }
+                    });
+                }
+
+                const news = [newsItem, ...(gameState.news || [])].slice(0, 10);
+                saveToFirebase({ prices: newPrices, priceChanges: newChanges, news });
+                setCustomNews('');
+            };
+
+            const joinGame = async () => {
+                if (!teamName.trim()) { alert('Please enter a team name'); return; }
+                if (!teamPin.trim() || teamPin.length < 4) { alert('Please enter a 4-digit PIN'); return; }
+
+                setLoading(true);
+                const snapshot = await gameRef.child('teams').once('value');
+                const teams = snapshot.val() || {};
+
+                // Check for existing team (case-insensitive)
+                const existingId = Object.keys(teams).find(id => teams[id].name.toLowerCase() === teamName.trim().toLowerCase());
+
+                if (existingId) {
+                    // LOGIN FLOW: Team exists, check PIN
+                    const team = teams[existingId];
+                    if (team.pin === teamPin) {
+                        setCurrentTeamId(existingId);
+                        localStorage.setItem('teamId', existingId);
+                        setView('participant');
+                    } else {
+                        alert('❌ Wrong PIN! \n\nThis team name is taken. If this is you, enter the correct PIN.');
+                    }
+                } else {
+                    // REGISTER FLOW: Create new team with PIN
+                    const holdings = {};
+                    STOCKS.forEach(s => { holdings[s.code] = 0; });
+                    const newTeamRef = gameRef.child('teams').push();
+                    const newTeam = { name: teamName.trim(), pin: teamPin, cash: STARTING_CASH, holdings, tipsUsed: 0 };
+                    await newTeamRef.set(newTeam);
+
+                    setCurrentTeamId(newTeamRef.key);
+                    localStorage.setItem('teamId', newTeamRef.key);
+                    setView('participant');
+                }
+                setLoading(false);
+            };
+
+            const buyStock = async (stockCode) => {
+                const qty = parseInt(buyQty[stockCode]) || 0;
+                if (qty <= 0 || !gameState.tradingOpen || !currentTeam) return;
+
+                const currentPrice = gameState.prices[stockCode];
+                const cost = qty * currentPrice;
+                const currentCash = Number(currentTeam.cash || 0);
+
+                if (currentCash < cost) { alert('Insufficient funds'); return; }
+
+                const updates = {};
+                const currentQty = Number(currentTeam.holdings?.[stockCode] || 0);
+                const currentAvg = Number(currentTeam.avgCost?.[stockCode] || STOCKS.find(s => s.code === stockCode).basePrice);
+
+                // Calculate New Average Cost
+                // Formula: ((OldQty * OldAvg) + (NewQty * NewPrice)) / TotalQty
+                let newAvg = currentAvg;
+                if (currentQty >= 0) {
+                    // Buying more (Long)
+                    const totalQty = currentQty + qty;
+                    newAvg = ((currentQty * currentAvg) + (qty * currentPrice)) / totalQty;
+                } else {
+                    // Reduce Short position. Avg Cost (Short Entry Price) stays same unless we flip to long.
+                    if (currentQty + qty > 0) newAvg = currentPrice; // Flip to Long
+                    // If still short, technically avg cost doesn't change relative to remaining short shares (FIFO/LIFO matters but WAC assumes same)
+                }
+
+                updates[`teams/${currentTeamId}/cash`] = currentCash - cost;
+                updates[`teams/${currentTeamId}/holdings/${stockCode}`] = currentQty + qty;
+                updates[`teams/${currentTeamId}/avgCost/${stockCode}`] = newAvg;
+
+                await saveToFirebase(updates);
+
+                // Play sound ONLY if in profit (covering a short position below average entry price)
+                if (currentQty < 0 && currentPrice < currentAvg) {
+                    notify('profit', `💰 Short Covered for Profit! ${stockCode} at ₹${currentPrice.toLocaleString()}`);
+                } else if (currentQty < 0 && currentPrice > currentAvg) {
+                    // Loss on short cover (silent notification)
+                    setNotification({
+                        message: `Covered ${stockCode} for loss at ₹${currentPrice.toLocaleString()}`,
+                        type: 'loss'
+                    });
+                    setTimeout(() => setNotification(null), 3000);
+                } else {
+                    // Regular buy (opening/increasing long)
+                    setNotification({
+                        message: `Bought ${stockCode} at ₹${currentPrice.toLocaleString()}`,
+                        type: 'profit'
+                    });
+                    setTimeout(() => setNotification(null), 3000);
+                }
+
+                setBuyQty(prev => ({ ...prev, [stockCode]: '' }));
+            };
+
+            const sellStock = async (stockCode) => {
+                const qty = parseInt(sellQty[stockCode]) || 0;
+                if (qty <= 0 || !gameState.tradingOpen || !currentTeam) return;
+
+                const currentPrice = gameState.prices[stockCode];
+                const revenue = qty * currentPrice;
+                const currentCash = Number(currentTeam.cash || 0);
+                const currentQty = Number(currentTeam.holdings?.[stockCode] || 0);
+
+                // Short Selling Limit: Prevent excessive short positions
+                const MAX_SHORT_UNITS = 1000;
+                if (currentQty - qty < -MAX_SHORT_UNITS) {
+                    alert(`🚫 Short Limit Reached! \n\nYou cannot short more than ${MAX_SHORT_UNITS} units of a single stock to maintain market stability.`);
+                    return;
+                }
+
+                const updates = {};
+                const currentAvg = Number(currentTeam.avgCost?.[stockCode] || STOCKS.find(s => s.code === stockCode).basePrice);
+
+                // Avg Cost Logic for Shorting
+                let newAvg = currentAvg;
+                if (currentQty <= 0) {
+                    // Already short or flat, and selling more -> Avg Cost becomes weighted avg of entry prices
+                    // (|OldQty| * OldAvg) + (NewQty * NewPrice) / |TotalQty|
+                    const totalAbsQty = Math.abs(currentQty) + qty;
+                    newAvg = ((Math.abs(currentQty) * currentAvg) + (qty * currentPrice)) / totalAbsQty;
+                } else {
+                    // Reduce Long position. Avg Cost stays same.
+                    if (currentQty - qty < 0) newAvg = currentPrice; // Flip to Short
+                }
+
+                updates[`teams/${currentTeamId}/cash`] = currentCash + revenue;
+                updates[`teams/${currentTeamId}/holdings/${stockCode}`] = currentQty - qty;
+                updates[`teams/${currentTeamId}/avgCost/${stockCode}`] = newAvg;
+
+                await saveToFirebase(updates);
+
+                // Play sound ONLY if in profit (closing a long position above average cost)
+                if (currentQty > 0 && currentPrice > currentAvg) {
+                    notify('profit', `💰 Realized Profit! Sold ${stockCode} for ₹${revenue.toLocaleString()}`);
+                } else if (currentQty > 0 && currentPrice < currentAvg) {
+                    // Loss on long sale (silent notification)
+                    setNotification({
+                        message: `Sold ${stockCode} for loss at ₹${currentPrice.toLocaleString()}`,
+                        type: 'loss'
+                    });
+                    setTimeout(() => setNotification(null), 3000);
+                } else {
+                    // Regular sell (opening/increasing short)
+                    setNotification({
+                        message: `Sold ${stockCode} (Short Entry) at ₹${currentPrice.toLocaleString()}`,
+                        type: 'profit'
+                    });
+                    setTimeout(() => setNotification(null), 3000);
+                }
+
+                setSellQty(prev => ({ ...prev, [stockCode]: '' }));
+            };
+
+            const takeLoan = async () => {
+                if (!confirm('🏦 TAKE LOAN?\n\nGet ₹50,000 cash now.\n\n⚠️ WARNING: 10% Interest will be charged every round!')) return;
+                const currentDebt = Number(currentTeam.debt || 0);
+                const currentCash = Number(currentTeam.cash || 0);
+
+                const newDebt = currentDebt + 50000;
+                await gameRef.child(`teams/${currentTeamId}`).update({
+                    cash: currentCash + 50000,
+                    debt: newDebt
+                });
+                notify('profit', '🏦 Loan Approved: ₹50,000 credited!');
+            };
+
+            // Winner Overlay Component
+            const WinnerOverlay = () => {
+                if (!gameState.gameEnded || teamsArray.length === 0) return null;
+
+                const sortedByNetWorth = [...teamsArray].sort((a, b) => b.netWorth - a.netWorth);
+                const wealthKing = sortedByNetWorth[0];
+
+                const masterStrategistOptions = teamsArray.filter(t => (t.debt || 0) <= 0);
+                const masterStrategist = masterStrategistOptions.length > 0
+                    ? [...masterStrategistOptions].sort((a, b) => b.pnlPct - a.pnlPct)[0]
+                    : null;
+
+                const overlayStyle = {
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(10, 10, 26, 0.95)', zIndex: 10000,
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', padding: '20px', textAlign: 'center',
+                    backdropFilter: 'blur(10px)',
+                    animation: 'fadeIn 0.5s ease-out'
+                };
+
+                return (
+                    <div style={overlayStyle}>
+                        <style>{`
+                            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+                            @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
+                            @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+                        `}</style>
+
+                        <div style={{ animation: 'scaleIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>
+                            <div style={{ fontSize: '14px', color: '#387ed1', fontWeight: '700', letterSpacing: '2px', marginBottom: '8px' }}>FINANCIAL CHAMPIONS</div>
+                            <h1 style={{ fontSize: '42px', fontWeight: '800', marginBottom: '40px', background: 'linear-gradient(to right, #fff, #387ed1)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Competition Results</h1>
+
+                            <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '900px' }}>
+
+                                {/* Wealth King Card */}
+                                <div style={{
+                                    background: 'linear-gradient(145deg, #1e293b, #0f172a)',
+                                    padding: '32px', borderRadius: '16px', border: '2px solid #fbbf24',
+                                    width: '320px', position: 'relative', boxShadow: '0 20px 50px rgba(251, 191, 36, 0.15)',
+                                    animation: 'float 4s ease-in-out infinite'
+                                }}>
+                                    <div style={{ position: 'absolute', top: '-30px', left: '50%', transform: 'translateX(-50%)', background: '#fbbf24', borderRadius: '50%', padding: '12px', boxShadow: '0 0 20px rgba(251, 191, 36, 0.5)' }}>
+                                        <Icon name="award" size={36} color="#000" />
+                                    </div>
+                                    <div style={{ color: '#fbbf24', fontSize: '12px', fontWeight: '700', marginTop: '20px', letterSpacing: '1px' }}>WEALTH KING</div>
+                                    <div style={{ fontSize: '28px', fontWeight: '700', margin: '12px 0' }}>{wealthKing.name}</div>
+                                    <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>Final Net Worth</div>
+                                    <div style={{ fontSize: '24px', fontWeight: '700', color: '#10b981' }}>₹{Math.round(wealthKing.netWorth).toLocaleString()}</div>
+                                    <div style={{ marginTop: '16px', fontSize: '12px', color: '#94a3b8' }}>Overall Champion</div>
+                                </div>
+
+                                {/* Master Strategist Card */}
+                                {masterStrategist && (
+                                    <div style={{
+                                        background: 'linear-gradient(145deg, #1e293b, #0f172a)',
+                                        padding: '32px', borderRadius: '16px', border: '2px solid #387ed1',
+                                        width: '320px', position: 'relative', boxShadow: '0 20px 50px rgba(56, 126, 209, 0.15)',
+                                        animation: 'float 4s ease-in-out infinite 0.5s'
+                                    }}>
+                                        <div style={{ position: 'absolute', top: '-30px', left: '50%', transform: 'translateX(-50%)', background: '#387ed1', borderRadius: '50%', padding: '12px', boxShadow: '0 0 20px rgba(56, 126, 209, 0.5)' }}>
+                                            <Icon name="activity" size={36} color="#fff" />
+                                        </div>
+                                        <div style={{ color: '#387ed1', fontSize: '12px', fontWeight: '700', marginTop: '20px', letterSpacing: '1px' }}>MASTER STRATEGIST</div>
+                                        <div style={{ fontSize: '28px', fontWeight: '700', margin: '12px 0' }}>{masterStrategist.name}</div>
+                                        <div style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '4px' }}>Profit Performance</div>
+                                        <div style={{ fontSize: '24px', fontWeight: '700', color: '#10b981' }}>+{masterStrategist.pnlPct.toFixed(1)}%</div>
+                                        <div style={{ marginTop: '16px', fontSize: '12px', color: '#94a3b8' }}>Zero Debt Efficiency</div>
+                                    </div>
+                                )}
+
+                            </div>
+
+                            <button
+                                onClick={() => { localStorage.removeItem('teamId'); window.location.reload(); }}
+                                style={{
+                                    marginTop: '60px', padding: '12px 40px', fontSize: '16px', fontWeight: '600',
+                                    background: 'transparent', color: '#fff', border: '1px solid #2a2a4a',
+                                    borderRadius: '8px', cursor: 'pointer', transition: 'all 0.3s'
+                                }}
+                                onMouseOver={(e) => { e.target.style.background = 'rgba(255,255,255,0.05)'; e.target.style.borderColor = '#387ed1'; }}
+                                onMouseOut={(e) => { e.target.style.background = 'transparent'; e.target.style.borderColor = '#2a2a4a'; }}
+                            >
+                                Back to Start
+                            </button>
+                        </div>
+                    </div>
+                );
+            };
+
+            // Toast Component
+            const Toast = () => {
+                if (!notification) return null;
+                const colors = { news: '#f97316', profit: '#00c853', loss: '#ff5252', crash: '#d32f2f' };
+                return (
+                    <div style={{
+                        position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)',
+                        background: '#333', color: '#fff', padding: '12px 24px', borderRadius: '50px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: '10px',
+                        fontWeight: '500', fontSize: '14px', border: `2px solid ${colors[notification.type] || '#fff'}`
+                    }}>
+                        <span>{notification.type === 'news' ? '🚨' : notification.type === 'profit' ? '💰' : '⚠️'}</span>
+                        {notification.message}
+                    </div>
+                );
+            };
+
+            // StockChart definition moved outside
+
+            const adminLogin = () => {
+                if (passwordInput === atob(_SYS_KEY)) {
+                    setAdminAuth(true);
+                    isAdmin.current = true;
+                    setView('admin');
+                } else {
+                    notify('loss', '❌ Unauthorized Entry Attempt!');
+                    alert('Invalid configuration key.');
+                }
+            };
+
+            const buyInsiderTip = async () => {
+                console.log('buyInsiderTip function called. currentTeamId:', currentTeamId);
+                try {
+                    if (!gameState.tradingOpen) {
+                        console.log('Market closed alert');
+                        alert('🚫 Market is closed. Insider tips are only available during active trading.');
+                        return;
+                    }
+                    if (!currentTeam || !currentTeamId) {
+                        console.log('Session error:', { currentTeam, currentTeamId });
+                        alert('🚫 Error: Team session not found. Please relogin.');
+                        return;
+                    }
+
+                    const TIP_COST = 5000;
+                    const tipsUsed = Number(currentTeam.tipsUsed || 0);
+                    const currentCash = Number(currentTeam.cash || 0);
+
+                    if (tipsUsed >= 2) {
+                        alert('🚫 Assistant limit reached (Max 2 tips per game).');
+                        return;
+                    }
+                    if (currentCash < TIP_COST) {
+                        alert('🚫 Insufficient cash for insider information.');
+                        return;
+                    }
+
+                    if (!confirm(`💸 Pay ₹${TIP_COST.toLocaleString()} for an insider tip? \n\nThis information will reveal news 60 seconds before it goes public!`)) return;
+
+                    // 1. Pick the Tip Type strategically: 1 Pos, 1 Neg
+                    let type;
+                    if (tipsUsed === 0) {
+                        type = Math.random() > 0.5 ? 'good' : 'bad';
+                    } else {
+                        // If first was good, this must be bad, and vice versa
+                        type = currentTeam.firstTipType === 'good' ? 'bad' : 'good';
+                    }
+
+                    const templates = NEWS_TEMPLATES[type] || NEWS_TEMPLATES.good;
+                    const template = templates[Math.floor(Math.random() * templates.length)];
+                    const isStock = Math.random() > 0.5;
+                    const target = isStock
+                        ? (STOCKS[Math.floor(Math.random() * STOCKS.length)]?.code || 'TATA')
+                        : (SECTORS[Math.floor(Math.random() * SECTORS.length)] || 'Banking');
+
+                    const tipTitle = isStock ? `${target}: ${template.title}` : `${target} Sector: ${template.title}`;
+                    const tipMessage = `🚨 INSIDER TIP: In approximately 60 seconds, the market will hear: "${tipTitle}". Impact: ${template.impact > 0 ? '+' : ''}${template.impact}%.`;
+
+                    // 2. Deduct Cash and record tip
+                    const updates = {};
+                    updates[`teams/${currentTeamId}/cash`] = currentCash - TIP_COST;
+                    updates[`teams/${currentTeamId}/tipsUsed`] = tipsUsed + 1;
+                    updates[`teams/${currentTeamId}/activeTip`] = tipMessage;
+                    if (tipsUsed === 0) {
+                        updates[`teams/${currentTeamId}/firstTipType`] = type;
+                    }
+
+                    await gameRef.update(updates);
+                    notify('profit', '🕵️ Deep Web Tip Received!');
+
+                    // 3. Schedule the Global News
+                    setTimeout(async () => {
+                        try {
+                            const snapshot = await gameRef.once('value');
+                            const data = snapshot.val();
+                            if (!data) return;
+
+                            const freshPrices = { ...data.prices || {} };
+                            const freshChanges = { ...data.priceChanges || {} };
+
+                            // Apply impact
+                            if (isStock) {
+                                const p = freshPrices[target] || 100;
+                                freshPrices[target] = Math.max(10, Math.round(p * (1 + template.impact / 100)));
+                                freshChanges[target] = template.impact;
+                            } else {
+                                STOCKS.forEach(s => {
+                                    if (s.sector === target) {
+                                        const p = freshPrices[s.code] || s.basePrice;
+                                        freshPrices[s.code] = Math.max(10, Math.round(p * (1 + template.impact / 100)));
+                                        freshChanges[s.code] = template.impact;
+                                    }
+                                });
+                            }
+
+                            const newsItem = {
+                                id: Date.now(),
+                                title: tipTitle,
+                                type: type,
+                                impact: template.impact,
+                                timestamp: new Date().toLocaleTimeString()
+                            };
+
+                            const latestNews = [newsItem, ...(data.news || [])].slice(0, 10);
+
+                            const finalUpdates = {
+                                prices: freshPrices,
+                                priceChanges: freshChanges,
+                                news: latestNews
+                            };
+                            finalUpdates[`teams/${currentTeamId}/activeTip`] = null;
+
+                            await gameRef.update(finalUpdates);
+                        } catch (timeoutErr) {
+                            console.error('Timeout impact error:', timeoutErr);
+                        }
+                    }, 60000);
+                } catch (err) {
+                    console.error('Insider Tip Error:', err);
+                    alert('❌ Failed to purchase tip. Please check connection.');
+                }
+            };
+
+            const toggleTrading = async () => {
+                try {
+                    const nextValue = !gameState.tradingOpen;
+                    await gameRef.update({ tradingOpen: nextValue });
+                    notify('news', nextValue ? '🔓 Trading Opened' : '🔒 Trading Closed');
+                } catch (err) {
+                    console.error('Failed to toggle trading:', err);
+                    alert('Error toggling trading. Check connection.');
+                }
+            };
+
+            // Stable handlers for StockRow
+            const handleOrderChange = useCallback((type, code, val) => {
+                if (type === 'buy') setBuyQty(prev => ({ ...prev, [code]: val }));
+                else setSellQty(prev => ({ ...prev, [code]: val }));
+            }, []);
+            const nextRound = async () => {
+                if (gameState.currentRound >= 5) return;
+
+                // APPLY INTEREST TO ALL TEAMS
+                const snapshot = await gameRef.child('teams').once('value');
+                const teams = snapshot.val() || {};
+                const updates = {};
+
+                Object.keys(teams).forEach(teamId => {
+                    const team = teams[teamId];
+                    if (team.debt > 0) {
+                        const newDebt = Math.floor(team.debt * 1.10); // 10% Interest
+                        updates[`teams/${teamId}/debt`] = newDebt;
+                    }
+                });
+
+                if (Object.keys(updates).length > 0) await gameRef.update(updates);
+
+                // Notify Admin
+                if (Object.keys(updates).length > 0) notify('loss', '📉 Interest Charged to Debtors');
+
+                const resetChanges = {};
+                STOCKS.forEach(s => { resetChanges[s.code] = 0; });
+                saveToFirebase({ currentRound: gameState.currentRound + 1, tradingOpen: false, priceChanges: resetChanges });
+            };
+            const endGame = () => saveToFirebase({ gameEnded: true, tradingOpen: false });
+            const setVolatility = (v) => saveToFirebase({ volatility: v });
+            const updatePrice = (code, price) => {
+                const val = parseFloat(price);
+                if (!isNaN(val) && val >= 0) saveToFirebase({ [`prices/${code}`]: val });
+            };
+
+            const resetGame = async () => {
+                if (!confirm('Reset entire game?')) return;
+                await gameRef.set({ ...defaultState, teams: {} });
+                localStorage.removeItem('teamId');
+                setCurrentTeamId(null);
+                setView('home');
+            };
+
+            const teamsArray = useMemo(() => {
+                if (!gameState.teams) return [];
+                return Object.entries(gameState.teams).map(([id, team]) => {
+                    const stats = calculatePortfolio(team);
+                    return { id, ...team, ...stats }; // Spread stats (invested, pnl, netWorth) directly
+                });
+            }, [gameState.teams, calculatePortfolio]);
+
+            const leaderboard = useMemo(() => [...teamsArray].sort((a, b) => b.netWorth - a.netWorth), [teamsArray]);
+
+            const s = {
+                container: { minHeight: '100vh', background: '#f4f4f4', fontFamily: "'Inter', sans-serif" },
+                header: { background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+                headerDark: { background: '#1a1a2e', borderBottom: '1px solid #2a2a4a', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+                logo: { fontSize: '16px', fontWeight: '600', color: '#212529' },
+                logoDark: { fontSize: '16px', fontWeight: '600', color: '#fff' },
+                card: { background: '#fff', border: '1px solid #e0e0e0', borderRadius: '4px' },
+                cardDark: { background: '#16213e', border: '1px solid #2a2a4a', borderRadius: '4px' },
+                btn: { padding: '8px 16px', fontSize: '13px', fontWeight: '500', borderRadius: '4px', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' },
+                btnPrimary: { background: '#387ed1', color: '#fff' },
+                btnSuccess: { background: '#00c853', color: '#fff' },
+                btnDanger: { background: '#ff5252', color: '#fff' },
+                btnGhost: { background: 'transparent', color: '#6c757d', border: '1px solid #e0e0e0' },
+                input: { width: '100%', padding: '10px 12px', fontSize: '13px', border: '1px solid #e0e0e0', borderRadius: '4px', outline: 'none', fontFamily: 'inherit' },
+                inputDark: { width: '100%', padding: '10px 12px', fontSize: '13px', border: '1px solid #2a2a4a', borderRadius: '4px', outline: 'none', background: '#0f3460', color: '#fff', fontFamily: 'inherit' },
+                textGreen: { color: '#00c853' },
+                textRed: { color: '#ff5252' },
+                textMuted: { color: '#6c757d' },
+                badge: { padding: '2px 8px', fontSize: '11px', fontWeight: '500', borderRadius: '3px', display: 'inline-flex', alignItems: 'center' },
+                badgeGreen: { background: '#e8f8ef', color: '#00c853' },
+                badgeRed: { background: '#ffebee', color: '#ff5252' },
+            };
+
+            const ConnectionBadge = () => (
+                <div style={{ position: 'fixed', bottom: '12px', right: '12px', ...s.badge, ...(connected ? s.badgeGreen : s.badgeRed), padding: '4px 10px', zIndex: 1000 }}>
+                    <Icon name="wifi" size={12} /> {connected ? 'Online' : 'Offline'}
+                </div>
+            );
+
+            if (loading) return (
+                <div style={{ ...s.container, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="spin"><Icon name="refresh" size={32} /></div>
+                </div>
+            );
+
+            if (view === 'home') {
+                // Check for saved session
+                const savedTeamId = localStorage.getItem('teamId');
+                if (savedTeamId && gameState.teams?.[savedTeamId] && !gameState.gameEnded) {
+                    setCurrentTeamId(savedTeamId);
+                    setView('participant');
+                    return null;
+                }
+
+                return (
+                    <div style={{ ...s.container, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <Toast />
+                        <ConnectionBadge />
+                        <div style={{ maxWidth: '420px', width: '100%' }}>
+                            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                                {/* Custom SVG Logo for CUHP */}
+                                <div style={{ width: '80px', height: '80px', margin: '0 auto 16px' }}>
+                                    <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', dropShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                                        <circle cx="50" cy="50" r="48" fill="#fff" stroke="#387ed1" strokeWidth="2" />
+                                        <circle cx="50" cy="50" r="40" fill="#f8f9fa" />
+                                        <path d="M30 40 Q50 60 70 40 V70 Q50 90 30 70 Z" fill="#387ed1" />
+                                        <path d="M35 35 H65" stroke="#1a237e" strokeWidth="4" strokeLinecap="round" />
+                                        <path d="M50 35 V75" stroke="#fff" strokeWidth="2" />
+                                        <text x="50" y="25" textAnchor="middle" fontSize="14" fontWeight="bold" fill="#1a237e" fontFamily="serif">CUHP</text>
+                                        <text x="50" y="90" textAnchor="middle" fontSize="8" fill="#387ed1" fontFamily="sans-serif">EST. 2009</text>
+                                    </svg>
+                                </div>
+                                <h1 style={{ fontSize: '22px', fontWeight: '700', color: '#212529', marginBottom: '4px' }}>CUHP Financial Simulation</h1>
+                                <p style={s.textMuted}>Trading Challenge • Live Multiplayer</p>
+                            </div>
+
+                            <div style={{ ...s.card, padding: '24px', marginBottom: '16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                                    <Icon name="users" size={18} /><span style={{ fontWeight: '500' }}>Player Login</span>
+                                </div>
+                                <input type="text" placeholder="Team Name" style={{ ...s.input, marginBottom: '8px' }} value={teamName} onChange={(e) => setTeamName(e.target.value)} />
+                                <input type="password" placeholder="Set 4-digit PIN" maxLength="4" style={s.input} value={teamPin} onChange={(e) => setTeamPin(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && joinGame()} />
+                                <button onClick={joinGame} style={{ ...s.btn, ...s.btnPrimary, width: '100%', marginTop: '12px', justifyContent: 'center' }}>Enter Game</button>
+                            </div>
+
+                            <div style={{ ...s.card, padding: '24px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                                    <Icon name="lock" size={18} /><span style={{ fontWeight: '500' }}>Admin Access</span>
+                                </div>
+                                <input type="password" placeholder="Admin password" style={s.input} value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && adminLogin()} />
+                                <button onClick={adminLogin} style={{ ...s.btn, ...s.btnGhost, width: '100%', marginTop: '12px', justifyContent: 'center' }}>Admin Login</button>
+                            </div>
+
+                            <div style={{ marginTop: '24px', padding: '16px', ...s.card }}>
+                                <p style={{ fontSize: '12px', ...s.textMuted }}>
+                                    <strong style={{ color: '#212529' }}>Rules:</strong> ₹1,00,000 starting capital • 5 rounds • {STOCKS.length} stocks • Real-time multiplayer
+                                </p>
+                            </div>
+                            {teamsArray.length > 0 && <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px', ...s.textMuted }}>{teamsArray.length} teams playing</p>}
+                        </div>
+                    </div>
+                );
+            }
+
+            if (view === 'participant' && currentTeam) {
+                const stats = calculatePortfolio(currentTeam);
+
+                return (
+                    <div style={s.container}>
+                        <Toast />
+                        <WinnerOverlay />
+                        <ConnectionBadge />
+                        <div style={s.header}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                                <span style={s.logo}>CUHP Financial</span>
+                                <div style={{ display: 'flex', gap: '4px' }}>
+                                    <button onClick={() => setActiveTab('stocks')} style={{ ...s.btn, ...(activeTab === 'stocks' ? s.btnPrimary : s.btnGhost), padding: '6px 12px' }}>Stocks</button>
+                                    <button onClick={() => setActiveTab('news')} style={{ ...s.btn, ...(activeTab === 'news' ? s.btnPrimary : s.btnGhost), padding: '6px 12px' }}>News</button>
+                                    <button onClick={() => setActiveTab('assistant')} style={{ ...s.btn, ...(activeTab === 'assistant' ? s.btnPrimary : s.btnGhost), padding: '6px 12px' }}>
+                                        <Icon name="activity" size={14} style={{ marginRight: '4px' }} />
+                                        Assistant
+                                    </button>
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '11px', ...s.textMuted }}>Round {gameState.currentRound}/5</div>
+                                    <div style={{ ...s.badge, ...(gameState.tradingOpen ? s.badgeGreen : s.badgeRed) }}>
+                                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: gameState.tradingOpen ? '#00c853' : '#ff5252', marginRight: '4px', animation: gameState.tradingOpen ? 'pulse 1s infinite' : 'none' }}></span>
+                                        {gameState.tradingOpen ? 'LIVE' : 'CLOSED'}
+                                    </div>
+                                </div>
+                                <button onClick={() => { setView('home'); setCurrentTeamId(null); localStorage.removeItem('teamId'); }} style={{ ...s.btn, ...s.btnGhost, padding: '6px 10px' }}><Icon name="logOut" size={16} /></button>
+                            </div>
+                        </div>
+
+                        {/* CHART SECTION */}
+                        <div style={{ padding: '0 24px' }}>
+                            {
+                                gameState.history && activeTab === 'stocks' && (
+                                    <StockChart
+                                        stockCode={selectedStockData || 'TATA'}
+                                        data={gameState.history[selectedStockData || 'TATA'] || []}
+                                        color={(gameState.priceChanges?.[selectedStockData || 'TATA'] || 0) >= 0 ? '#00c853' : '#ff5252'}
+                                    />
+                                )
+                            }
+                        </div >
+
+                        <div style={{ padding: '0 24px 24px', borderBottom: '1px solid #e0e0e0', background: '#fff' }}>
+                            <h2 style={{ fontSize: '14px', fontWeight: '500', marginBottom: '4px' }}>{currentTeam.name}</h2>
+                            <div style={{ display: 'flex', gap: '24px', fontSize: '13px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <div><span style={s.textMuted}>Cash</span><div style={{ fontWeight: '600' }}>₹{currentTeam.cash.toLocaleString()}</div></div>
+                                <div><span style={s.textMuted}>Invested</span><div style={{ fontWeight: '600' }}>₹{Math.abs(stats.invested).toFixed(0)}</div></div>
+                                <div><span style={s.textMuted}>Current Value</span><div style={{ fontWeight: '600' }}>₹{stats.currentValue.toLocaleString()}</div></div>
+                                <div><span style={s.textMuted}>P&L</span><div style={{ fontWeight: '600', color: stats.pnl >= 0 ? '#00c853' : '#ff5252' }}>{stats.pnl >= 0 ? '+' : ''}₹{stats.pnl.toFixed(0)} ({stats.pnlPct.toFixed(1)}%)</div></div>
+                                <div><span style={s.textMuted}>Debt</span><div style={{ fontWeight: '600', color: '#ff5252' }}>₹{stats.debt.toLocaleString()}</div></div>
+                                <div style={{ background: '#e8eaf6', padding: '4px 8px', borderRadius: '4px' }}><span style={{ color: '#3f51b5', fontSize: '11px' }}>NET WORTH</span><div style={{ fontWeight: '700', color: '#3f51b5', fontSize: '15px' }}>₹{stats.netWorth.toLocaleString()}</div></div>
+                                <button onClick={takeLoan} style={{ ...s.btn, background: '#6366f1', color: '#fff', padding: '6px 10px', fontSize: '11px', height: 'fit-content' }}>🏦 Get Loan</button>
+
+                                <SentimentMeter news={gameState.news} />
+                            </div>
+                        </div>
+
+                        {
+                            gameState.gameEnded && (
+                                <div style={{ margin: '16px 24px', padding: '12px 16px', background: '#ffebee', border: '1px solid #ff5252', borderRadius: '4px' }}>
+                                    <span style={{ color: '#ff5252', fontWeight: '500' }}>Game has ended!</span>
+                                </div>
+                            )
+                        }
+
+                        <div style={{ padding: '24px' }}>
+                            {activeTab === 'stocks' && (
+                                <div style={{ ...s.card, overflowX: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '650px' }}>
+                                        <thead><tr style={{ background: '#f8f9fa' }}>
+                                            <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>Stock</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>Price</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>Chg</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>Qty</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>Avg. Price</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>Invested</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>My P&L</th>
+                                            <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: '11px', fontWeight: '600', color: '#6c757d', textTransform: 'uppercase' }}>Action</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {STOCKS.map(stock => (
+                                                <StockRow
+                                                    key={stock.code}
+                                                    stock={stock}
+                                                    currentPrice={gameState.prices?.[stock.code] || 0}
+                                                    chg={gameState.priceChanges?.[stock.code] || 0}
+                                                    qty={currentTeam.holdings?.[stock.code] || 0}
+                                                    avgCost={currentTeam.avgCost?.[stock.code] || stock.basePrice}
+                                                    buyQty={buyQty[stock.code] || ''}
+                                                    sellQty={sellQty[stock.code] || ''}
+                                                    onBuyQtyChange={(e) => handleOrderChange('buy', stock.code, e.target.value)}
+                                                    onSellQtyChange={(e) => handleOrderChange('sell', stock.code, e.target.value)}
+                                                    onBuy={() => buyStock(stock.code)}
+                                                    onSell={() => sellStock(stock.code)}
+                                                    isSelected={selectedStockData === stock.code}
+                                                    onClick={() => setSelectedStockData(stock.code)}
+                                                    tradingOpen={gameState.tradingOpen}
+                                                    gameEnded={gameState.gameEnded}
+                                                />
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            {activeTab === 'news' && (
+                                <div style={s.card}>{(gameState.news || []).length === 0 ? <div style={{ padding: '48px', textAlign: 'center', ...s.textMuted }}>No news yet</div> : (gameState.news || []).map(n => (
+                                    <div key={n.id} style={{ padding: '16px', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between' }}>
+                                        <div><div style={{ fontWeight: '500' }}>{n.title}</div><div style={{ fontSize: '12px', ...s.textMuted }}>{n.timestamp}</div></div>
+                                        <span style={{ ...s.badge, ...(n.type === 'good' ? s.badgeGreen : s.badgeRed) }}>{n.impact > 0 ? '+' : ''}{n.impact}%</span>
+                                    </div>
+                                ))}</div>
+                            )}
+
+                            {activeTab === 'assistant' && (
+                                <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+                                    <div style={{ ...s.card, padding: '24px', textAlign: 'center', background: '#0f172a', border: '1px solid #1e293b' }}>
+                                        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🕵️</div>
+                                        <h2 style={{ color: '#fff', fontSize: '20px', marginBottom: '8px' }}>Insider Trading Terminal</h2>
+                                        <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '24px' }}>
+                                            Connect to the "Deep Web" to receive leaked financial information.
+                                            Tips cost <strong>₹5,000</strong> and are delivered 1 minute before the market reacts.
+                                        </p>
+
+                                        {currentTeam.activeTip ? (
+                                            <div style={{ padding: '20px', background: '#1e293b', borderRadius: '8px', border: '1px dashed #387ed1', color: '#387ed1', fontWeight: '600', textAlign: 'left', marginBottom: '24px' }}>
+                                                {currentTeam.activeTip}
+                                                <div style={{ fontSize: '11px', marginTop: '8px', color: '#94a3b8', fontWeight: '400' }}>
+                                                    * This news will be published globally in less than 60 seconds. Take your positions now!
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={buyInsiderTip}
+                                                disabled={Number(currentTeam.tipsUsed || 0) >= 2 || Number(currentTeam.cash || 0) < 5000}
+                                                style={{
+                                                    ...s.btn,
+                                                    background: '#387ed1',
+                                                    color: '#fff',
+                                                    padding: '12px 32px',
+                                                    fontSize: '15px',
+                                                    opacity: (Number(currentTeam.tipsUsed || 0) >= 2 || Number(currentTeam.cash || 0) < 5000) ? 0.5 : 1
+                                                }}
+                                            >
+                                                Buy Insider Tip (₹5,000)
+                                            </button>
+                                        )}
+
+                                        <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'center', gap: '24px' }}>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>TIPS USED</div>
+                                                <div style={{ color: '#fff', fontSize: '18px', fontWeight: '700' }}>{currentTeam.tipsUsed || 0} / 2</div>
+                                            </div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div style={{ color: '#94a3b8', fontSize: '11px' }}>STATUS</div>
+                                                <div style={{ color: currentTeam.tipsUsed >= 2 ? '#ef4444' : '#10b981', fontSize: '18px', fontWeight: '700' }}>
+                                                    {currentTeam.tipsUsed >= 2 ? 'LOCKED' : 'AVAILABLE'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ marginTop: '16px', padding: '12px', background: '#fee2e2', borderRadius: '4px', border: '1px solid #fecaca', fontSize: '12px', color: '#991b1b' }}>
+                                        <strong>⚠️ Warning:</strong> Insider trading is "illegal" in the real world. In this simulation, it costs cash and has limited uses. Use it wisely to maximize your returns!
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '16px', color: '#94a3b8', fontSize: '11px', borderTop: '1px solid #e0e0e0' }}>
+                            CUHP Financial Simulation Challenge • {GAME_VERSION}
+                        </div>
+                    </div >
+                );
+            }
+
+            if (view === 'admin' && adminAuth) {
+                return (
+                    <div style={{ ...s.container, background: '#0f0f23' }}>
+                        <WinnerOverlay />
+                        <ConnectionBadge />
+                        <div style={s.headerDark}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}><Icon name="settings" size={20} color="#fff" /><span style={s.logoDark}>Admin Panel</span></div>
+                            <button onClick={() => { setView('home'); setAdminAuth(false); isAdmin.current = false; }} style={{ ...s.btn, background: '#2a2a4a', color: '#fff' }}><Icon name="logOut" size={14} /> Exit</button>
+                        </div>
+
+                        <div style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+                            <div style={s.cardDark}>
+                                <div style={{ padding: '16px', borderBottom: '1px solid #2a2a4a' }}><h3 style={{ color: '#fff', fontSize: '14px' }}>Controls</h3></div>
+                                <div style={{ padding: '16px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                                        <div style={{ background: '#0f3460', padding: '16px', borderRadius: '4px', textAlign: 'center' }}><div style={{ color: '#6c757d', fontSize: '11px' }}>ROUND</div><div style={{ color: '#fff', fontSize: '28px', fontWeight: '700' }}>{gameState.currentRound}/5</div></div>
+                                        <div style={{ background: '#0f3460', padding: '16px', borderRadius: '4px', textAlign: 'center' }}><div style={{ color: '#6c757d', fontSize: '11px' }}>TEAMS</div><div style={{ color: '#fff', fontSize: '28px', fontWeight: '700' }}>{teamsArray.length}</div></div>
+                                    </div>
+                                    <div style={{ background: '#0f3460', padding: '12px', borderRadius: '4px', marginBottom: '16px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}><span style={{ color: '#6c757d', fontSize: '11px' }}>VOLATILITY</span><span style={{ color: '#fff', fontWeight: '600' }}>{gameState.volatility || 2}%</span></div>
+                                        <input type="range" min="0" max="10" step="0.5" value={gameState.volatility || 2} onChange={(e) => setVolatility(parseFloat(e.target.value))} style={{ width: '100%', accentColor: '#387ed1' }} />
+                                        {gameState.tradingOpen && <div style={{ marginTop: '8px', fontSize: '11px', color: '#00c853' }}>● Prices fluctuating live</div>}
+                                    </div>
+                                    <button onClick={toggleTrading} disabled={gameState.gameEnded} style={{ ...s.btn, width: '100%', justifyContent: 'center', marginBottom: '8px', ...(gameState.tradingOpen ? s.btnDanger : s.btnSuccess) }}>{gameState.tradingOpen ? 'Close Trading' : 'Open Trading'}</button>
+                                    <button onClick={nextRound} disabled={gameState.currentRound >= 5} style={{ ...s.btn, ...s.btnPrimary, width: '100%', justifyContent: 'center', marginBottom: '8px' }}>Next Round</button>
+                                    <button onClick={endGame} disabled={gameState.gameEnded} style={{ ...s.btn, width: '100%', justifyContent: 'center', marginBottom: '8px', background: '#ffa726', color: '#000' }}>End Game</button>
+                                    <button onClick={resetGame} style={{ ...s.btn, width: '100%', justifyContent: 'center', background: '#7f1d1d', color: '#fff' }}>Reset All</button>
+                                </div>
+                            </div>
+
+                            <div style={s.cardDark}>
+                                <div style={{ padding: '16px', borderBottom: '1px solid #2a2a4a' }}><h3 style={{ color: '#fff', fontSize: '14px' }}>Launch News</h3></div>
+                                <div style={{ padding: '16px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                                        <button onClick={() => setNewsType('good')} style={{ ...s.btn, justifyContent: 'center', ...(newsType === 'good' ? s.btnSuccess : { background: '#2a2a4a', color: '#fff' }) }}>Positive</button>
+                                        <button onClick={() => setNewsType('bad')} style={{ ...s.btn, justifyContent: 'center', ...(newsType === 'bad' ? s.btnDanger : { background: '#2a2a4a', color: '#fff' }) }}>Negative</button>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                                        <button onClick={() => setNewsTarget('stock')} style={{ ...s.btn, justifyContent: 'center', ...(newsTarget === 'stock' ? s.btnPrimary : { background: '#2a2a4a', color: '#fff' }) }}>Stock</button>
+                                        <button onClick={() => setNewsTarget('sector')} style={{ ...s.btn, justifyContent: 'center', ...(newsTarget === 'sector' ? s.btnPrimary : { background: '#2a2a4a', color: '#fff' }) }}>Sector</button>
+                                    </div>
+                                    <select value={newsTarget === 'stock' ? selectedStock : selectedSector} onChange={(e) => newsTarget === 'stock' ? setSelectedStock(e.target.value) : setSelectedSector(e.target.value)} style={{ ...s.inputDark, marginBottom: '12px' }}>
+                                        {newsTarget === 'stock' ? STOCKS.map(st => <option key={st.code} value={st.code}>{st.code}</option>) : SECTORS.map(sec => <option key={sec} value={sec}>{sec}</option>)}
+                                    </select>
+                                    <button onClick={() => launchNews(true)} style={{ ...s.btn, width: '100%', justifyContent: 'center', background: '#f97316', color: '#fff', marginBottom: '12px' }}>Launch Selected News</button>
+
+                                    <div style={{ marginBottom: '16px', padding: '12px', background: '#252547', borderRadius: '4px', border: '1px dashed #444' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                            <span style={{ color: '#fff', fontWeight: '500', fontSize: '13px' }}>🤖 Auto Pilot Mode</span>
+                                            {autoNewsEnabled && <span style={{ fontSize: '10px', color: '#00c853', animation: 'pulse 1s infinite' }}>● ACTIVE</span>}
+                                        </div>
+                                        <p style={{ fontSize: '11px', color: '#aaa', marginBottom: '8px' }}>Automatically launches random news every 2 minutes.</p>
+                                        <button onClick={() => setAutoNewsEnabled(!autoNewsEnabled)} style={{ ...s.btn, width: '100%', justifyContent: 'center', ...(autoNewsEnabled ? s.btnDanger : s.btnSuccess) }}>
+                                            {autoNewsEnabled ? 'Stop Auto Pilot' : 'Start Auto Pilot'}
+                                        </button>
+                                    </div>
+
+                                    <input type="text" placeholder="Custom headline..." style={{ ...s.inputDark, marginBottom: '8px' }} value={customNews} onChange={(e) => setCustomNews(e.target.value)} />
+                                    <input type="number" placeholder="Impact %" style={{ ...s.inputDark, marginBottom: '8px' }} value={customImpact} onChange={(e) => setCustomImpact(e.target.value)} />
+                                    <button onClick={() => launchNews(false)} style={{ ...s.btn, width: '100%', justifyContent: 'center', background: '#6366f1', color: '#fff' }}>Launch Custom</button>
+                                </div>
+                            </div>
+
+                            <div style={s.cardDark}>
+                                <div style={{ padding: '16px', borderBottom: '1px solid #2a2a4a' }}><h3 style={{ color: '#fff', fontSize: '14px' }}>Price Control</h3></div>
+                                <div style={{ padding: '16px', maxHeight: '350px', overflowY: 'auto' }}>
+                                    {STOCKS.map(stock => (
+                                        <div key={stock.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', padding: '8px', background: '#0f3460', borderRadius: '4px' }}>
+                                            <div><div style={{ color: '#fff', fontWeight: '500', fontSize: '13px' }}>{stock.code}</div></div>
+                                            <input type="number" min="0" step="10" style={{ ...s.inputDark, width: '90px', textAlign: 'right' }} value={gameState.prices?.[stock.code] || 0} onChange={(e) => updatePrice(stock.code, e.target.value)} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={{ padding: '0 24px 24px' }}>
+                            <div style={s.cardDark}>
+                                <div style={{ padding: '16px', borderBottom: '1px solid #2a2a4a' }}><h3 style={{ color: '#fff', fontSize: '14px' }}>Leaderboard</h3></div>
+                                {leaderboard.length === 0 ? <div style={{ padding: '48px', textAlign: 'center', color: '#6c757d' }}>No teams</div> : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                        <thead><tr style={{ background: '#0f3460' }}>
+                                            <th style={{ padding: '12px', textAlign: 'left', color: '#6c757d', fontSize: '11px' }}>RANK</th>
+                                            <th style={{ padding: '12px', textAlign: 'left', color: '#6c757d', fontSize: '11px' }}>TEAM</th>
+                                            <th style={{ padding: '12px', textAlign: 'right', color: '#6c757d', fontSize: '11px' }}>CASH</th>
+                                            <th style={{ padding: '12px', textAlign: 'right', color: '#6c757d', fontSize: '11px' }}>NET WORTH</th>
+                                            <th style={{ padding: '12px', textAlign: 'right', color: '#6c757d', fontSize: '11px' }}>INVESTED</th>
+                                            <th style={{ padding: '12px', textAlign: 'right', color: '#6c757d', fontSize: '11px' }}>CURR VAL</th>
+                                            <th style={{ padding: '12px', textAlign: 'right', color: '#6c757d', fontSize: '11px' }}>P&L</th>
+                                            <th style={{ padding: '12px', textAlign: 'right', color: '#6c757d', fontSize: '11px' }}>DEBT</th>
+                                            <th style={{ padding: '12px', textAlign: 'center', color: '#6c757d', fontSize: '11px' }}>ACTION</th>
+                                        </tr></thead>
+                                        <tbody>{leaderboard.map((t, i) => {
+                                            const totalPnL = t.netWorth - STARTING_CASH;
+                                            return (
+                                                <tr key={t.id} style={{ borderBottom: '1px solid #2a2a4a', background: i === 0 ? '#1a472a' : i === 1 ? '#1a365d' : i === 2 ? '#44403c' : 'transparent' }}>
+                                                    <td style={{ padding: '12px', color: '#fff', fontWeight: '600' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</td>
+                                                    <td style={{ padding: '12px', color: '#fff' }}>{t.name}</td>
+                                                    <td style={{ padding: '12px', color: '#aaa', textAlign: 'right', fontFamily: 'monospace' }}>₹{(t.cash || 0).toLocaleString()}</td>
+                                                    <td style={{ padding: '12px', color: '#fff', textAlign: 'right', fontWeight: 'bold' }}>₹{Math.round(t.netWorth).toLocaleString()}</td>
+                                                    <td style={{ padding: '12px', color: '#aaa', textAlign: 'right', fontFamily: 'monospace' }}>₹{Math.round(t.invested).toLocaleString()}</td>
+                                                    <td style={{ padding: '12px', color: '#aaa', textAlign: 'right', fontFamily: 'monospace' }}>₹{Math.round(t.currentValue).toLocaleString()}</td>
+                                                    <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: t.pnl >= 0 ? '#00c853' : '#ff5252' }}>
+                                                        {t.pnl >= 0 ? '+' : ''}₹{Math.round(t.pnl).toLocaleString()} ({t.pnlPct.toFixed(1)}%)
+                                                    </td>
+                                                    <td style={{ padding: '12px', color: '#ff5252', textAlign: 'right' }}>{t.debt > 0 ? `₹${t.debt.toLocaleString()}` : '-'}</td>
+                                                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                                                        <button onClick={() => { if (confirm(`Remove team "${t.name}"?`)) gameRef.child(`teams/${t.id}`).remove(); }} style={{ background: '#ff5252', border: 'none', borderRadius: '4px', padding: '4px 8px', color: '#fff', fontSize: '11px', cursor: 'pointer' }}>Kick</button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}</tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </div>
+                        <div style={{ textAlign: 'center', padding: '16px', color: '#64748b', fontSize: '11px', borderTop: '1px solid #2a2a4a' }}>
+                            Admin Console • {GAME_VERSION}
+                        </div>
+                    </div>
+                );
+            }
+            return null;
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<TradingGame />);
+        // Anti-Snoop Security Protection
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.onkeydown = function (e) {
+            if (e.keyCode == 123) return false; // F12
+            if (e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false; // Ctrl+Shift+I
+            if (e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false; // Ctrl+Shift+C
+            if (e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false; // Ctrl+Shift+J
+            if (e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false; // Ctrl+U (View Source)
+        };
+    </script>
+</body>
+
+</html>
